@@ -31,6 +31,7 @@
         var newBox = null;
         var image = null;
         var file = null;
+        var fileName = null;
     
         /**
         * Rectangle constructor function - Creates and initializes a rectangular object.
@@ -167,9 +168,15 @@
                     method: 'POST',
                     body: formData
                 }).then((response) => {
+                    postObj = {
+                        rectangles : rectangles,
+                        file_name : fileName,
+                        page_size : (image.width*factor)*(image.height*factor)
+                    };
+                    console.log(postObj);
                     fetch("http://localhost:5000/segment",{
                         method:'POST',
-                        body: JSON.stringify(rectangles)
+                        body: JSON.stringify(postObj)
                     })
                 })
         }
@@ -317,6 +324,7 @@
         function uploadImage() {
             var fileInput = document.getElementById('imageFileInput');
             file = fileInput.files[0];
+            fileName = fileInput.value.split("\\").slice(-1)[0];
             
 
             if (file) {

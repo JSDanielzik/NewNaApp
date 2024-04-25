@@ -48,7 +48,7 @@ def create_app(test_config=None):
     cfg.merge_from_file("/home/jakob/anaconda3/envs/JohannaProbiert/lib/python3.7/site-packages/detectron2/model_zoo/configs/COCO-Detection/faster_rcnn_R_50_FPN_3x.yaml")
     cfg.MODEL.ROI_HEADS.NUM_CLASSES = 7
 
-    cfg.MODEL.WEIGHTS = '/home/jakob/Johanna/Projekte/NewspaperNavigator/model_final.pth'
+    cfg.MODEL.WEIGHTS = '/home/jakob/Johanna/Projekte/NewspaperNavigator/NewNaApp/NewNaApp/model_final.pth'
     cfg.MODEL.DEVICE = "cpu"
     predictor = DefaultPredictor(cfg)
 
@@ -140,9 +140,12 @@ def create_app(test_config=None):
     """
     @app.route('/segment', methods=['POST'])
     def segment():
-        boxes = json.loads(request.data)
+        data = json.loads(request.data)
+        print(data)
+        boxes = data['rectangles']
         img = cv.imread('image_upload/original.png')
         i = 0
+        page_meta = []
         for box in boxes:
             x = int(box['x'])
             y = int(box['y'])
@@ -150,6 +153,37 @@ def create_app(test_config=None):
             height = int(box['height'])
             cutout = img[y*2:(y+height)*2, x*2:(x+width)*2]
             cv.imwrite(f'image_upload/cutouts/{i}.png', cutout)
+            jsonDict = {
+                "File": data["file_name"],
+                "Size": [width, height],
+                "Box": {
+                    "top_left": [x*2, y*2],
+                    "top_right": [(x+width)*2, y*2],
+                    "bottom_left": [x*2, (y+height)*2],
+                    "bottom_right": [(x+width)*2, (y+width)*2],
+                    "depth": 0,
+                    "height": height,
+                    "width": width,
+                    "size": [width, height],
+                    "contains_ad": True,
+                    "Percent_page": width*2*height*2/data["page_size"]*2
+                }
+            }
+            page_meta.append({
+                "top_left": [x*2, y*2],
+                "top_right": [(x+width)*2, y*2],
+                "bottom_left": [x*2, (y+height)*2],
+                "bottom_right": [(x+width)*2, (y+width)*2],
+                "depth": 0,
+                "height": height,
+                "width": width,
+                "size": [width, height],
+                "contains_ad": True
+            })
+            with open(f'image_upload/cutouts/{i}.json', "w") as file:
+                file.write(json.dumps(jsonDict))
+            with open(f'image_upload/cutouts/page_meta.json', "w") as file:
+                file.write(json.dumps(page_meta))
             i += 1
         response = jsonify(200)
         response.headers.add('Access-Control-Allow-Origin', '*')
