@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Image Upload</title>
+    </head>
+    <body>
+        <h1>Image Upload</h1>
+        <form id="imageUploadForm", enctype="multipart/form-data">
+            <input type="file" name="imageFile" id="imageFile">
+            <button type="submit">Upload Image</button>
+        </form>
+    </body>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function(){
+            document.getElementById('imageUploadForm').addEventListener('submit', function(event){
+                event.preventDefault();
+                var formData = new FormData();
+                var file = document.getElementById('imageFile').files[0];
+                formData.append('imageFile', file);
+                request_dict = {method:'POST', body:formData};
+                console.log(request_dict);
+                fetch("http://localhost:5000/getAdvertisementBoxes", request_dict)
+                    .then(response => response.text())
+                    .then(result => {
+                        console.log('Server Response:', result);
+                    })
+                    .catch(error => {
+                        console.error('Error', error);
+                    })
+            })
+        })
+    </script>
+</html>

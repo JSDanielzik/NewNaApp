@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Image Upload and Object Detection</title>
+</head>
+<body>
+    <h1>Image Upload and Object Detection</h1>
+    <input type="file" id="imageFileInput">
+    <button onclick="uploadImage()">Upload Image</button><br>
+    <div id="responsive-div" style="display: grid;">
+        <canvas id="imageCanvas" style="grid-column: 1; grid-row: 1;"></canvas>
+        <canvas id="rectCanvas" style="grid-column: 1; grid-row: 1;"></canvas>
+    </div>
+    
+    
+
+    <script>
+
+        var rectangles = [];
+        var handles = [];
+        var dragTL = dragBL = dragBR = dragTR = false;
+        canvas = document.getElementById('imageCanvas');
+        var  mouseMove, mouseUp;
+        var activatedRect;
+        var factor = 0.5;
+        var toolbarOpen = false;
+        var addNewBox = false;
+        var newBoxState = 0;
+        var newBox = null;
+        var image = null;
+        var file = null;
+    
+        /**
+        * Rectangle constructor function - Creates and initializes a rectangular object.
+        *
+        * @param {number} x - The horizontal starting point of the rectangle.
+        * @param {number} y - The vertical starting point of the rectangle.
+        * @param {number} w - The width of the rectangle.
+        * @param {number} h - The height of the rectangle.
+        *
+        * The created rectangle object contains the properties x, y, height, width, 
+        * and a boolean attribute 'activated' to indicate whether user interaction with 
+        * the rectangle is currently active on the canvas.
+        */
+        function Rectangle(x, y, w, h){
+            this.x = x;
+            this.y = y;
+            this.height = h;
+            this.width = w;
+            this.activated = false;
+        }
+        /**
+         * draw method for the Rectangle - Renders a rectangle on a 2D canvas context.
+         * 
+         * @param {Object} ctx - The 2D rendering context for the drawing surface of a canvas.
+         * 
+         * The rectangle's fill style and alpha level will be modified based on whether the rectangle is activated. 
+         * If the rectangle is activated, additional visual indicators (corners) are added to the rectangle.
+         * The rectangle and its border are then drawn on the canvas using the ctx.fillRect and ctx.strokeRect methods.
+         */
+        Rectangle.prototype.draw = function (ctx){
+            ctx.fillStyle = "rgb(222, 70, 40, 0.0)"
+            if(this.activated){
+                this.drawCorners(ctx);
+                ctx.fillStyle = "rgba(222, 70, 40, 0.5)";
+            }
+            ctx.strokeStyle = "rgb(222, 70, 40)";
+            ctx.lineWidth = 5;
+            ctx.beginPath();
+            ctx.fillRect(this.x, this.y, this.width, this.height);
+            ctx.strokeRect(this.x, this.y, this.width, this.height);
+            ctx.stroke();
+        }
+        /**
+         * checkMouseClick method for the Rectangle - Checks if a mouse click falls within the rectangle's boundaries.
+         *
+         * @param {number} x - The x-coordinate of the mouse click.
+         * @param {number} y - The y-coordinate of the mouse click.
+         *
+         * If a mouse click occurs within the rectangle, this method will loop through all 
+         * other rectangles, deactivate them, and then activate the clicked rectangle.
+         * If the toolbar attached to the application's user interface isn't opened, it will open 
+         * after a successful mouse click within the rectangle. The canvas will then redraw all 
+         * rectangles, highlighting any interactive changes.
+         */
+        Rectangle.prototype.checkMouseClick = function (x, y){
+            if (x >= this.x && x <= this.x+this.width){
+                if(y >= this.y && y <= this.y+this.height){
+                    rectangles.forEach((rect) => {
+                        if(rect.activated){
+                            rect.activated = false;
+                        }
+                    })
+                    this.activated = true;
+                    activatedRect = this;
+                    redrawAllRectangles();
+                    if(!toolbarOpen){
+                        openToolBar();
+                    }
+                }
+            }
+        }
+        /**
+         * drawCorners method for the Rectangle - Draws the corners indicating an active rectangle on a 2D canvas context.
+         *
+         * @param {Object} ctx - The 2D rendering context for the drawing surface of a canvas.
+         *
+         * The corners of the Rectangle instance are used to draw four small circles indicating 
+         * that the rectangle is active and can be interacted with. Each corner is represented by 
+         * an array containing the x and y coordinates and a string that indicates which corner it is 
+         * (top-left 'tl', top-right 'tr', bottom-left 'bl', or bottom-right 'br').
+         * These corners are then drawn on the canvas with specified color, line width, and fill.
+         */
+        Rectangle.prototype.drawCorners = function (ctx){
+            corners = [[this.x, this.y, 'tl'], 
+                       [this.x+this.width, this.y, 'tr'],
+                       [this.x, this.y+this.height, 'bl'],
+                       [this.x+this.width, this.y+this.height, 'br']];
+            handles = corners;
+            corners.forEach((corner) => {
+                ctx.beginPath();
+                ctx.arc(corner[0], corner[1], 10, 0, 360);
+                ctx.strokeStyle = "rgb(222, 70, 40)";
+                ctx.lineWidth = 5;
+                ctx.fillStyle = "rgb(222, 70, 40)";
+                ctx.fill();
+                ctx.stroke();
+            })
+        }
+        /**
+         * onToolbarDeleteButton function - Deletes an activated rectangle from the canvas.
+         * 
+         * Upon the toolbar's delete button action, the function filters through all the rectangles 
+         * saved in the rectangle array. It removes any rectangle that currently has its 'activated'
+         * property set to 'true', signifying that it's selected. Upon successful deletion, the
+         * canvas is updated to redraw all remaining rectangles.
+         */
+        function onToolbarDeleteButton(){
+            rectangles = rectangles.filter(function (rect){
+                return rect.activated == false;
+            })
+            activatedRect = null;
+            redrawAllRectangles();
+        }
+
+        /**
+         * onAddBoxButton function - Sets the environment to add a new box to the canvas.
+         *
+         * Upon the Add Box button action, the function sets the 'addNewBox' flag to true. 
+         * The flag's state can then be used elsewhere in the application to control when a 
+         * new rectangle (or box) object is created and added to the canvas.
+         */
+        function onAddBoxButton(){
+            addNewBox = true;
+        }
+
+        /**
+         * Triggers when Save Segmentation button is clicked. Makes a POST request to register uploaded image
+         * and another POST request with rectangle data for segmentation.
+         */
+        function onSaveSegmentationClick(){
+            var formData = new FormData();
+            formData.append('imageFile', file);
+            fetch("http://localhost:5000/registerImage", {
+                    method: 'POST',
+                    body: formData
+                }).then((response) => {
+                    fetch("http://localhost:5000/segment",{
+                        method:'POST',
+                        body: JSON.stringify(rectangles)
+                    })
+                })
+        }
+        /**
+         * Constructs a toolbar with buttons for removing a box, adding a box, and saving the segmentation initiated by user interactions.
+         */
+        function openToolBar(){
+            toolbarOpen = true;
+            toolBarDiv = document.createElement('div');
+            toolBarDiv.id = 'toolbar';
+            
+            toolbarDeleteButton = document.createElement('button');
+            toolbarDeleteButton.textContent = 'Remove Box';
+            toolbarDeleteButton.addEventListener('click', onToolbarDeleteButton, false);
+            toolBarDiv.appendChild(toolbarDeleteButton);
+
+            toolbarAddBoxButton = document.createElement('button');
+            toolbarAddBoxButton.textContent = 'Add Box';
+            toolbarAddBoxButton.addEventListener('click', onAddBoxButton, false);
+            toolBarDiv.appendChild(toolbarAddBoxButton);
+
+            toolbarSaveSegmentationButton = document.createElement('button');
+            toolbarSaveSegmentationButton.textContent = "Save Segmentation";
+            toolbarSaveSegmentationButton.addEventListener('click', onSaveSegmentationClick, false);
+            toolBarDiv.appendChild(toolbarSaveSegmentationButton);
+
+            container = document.getElementById('responsive-div');
+            container.appendChild(toolBarDiv);
+        }
+
+        /**
+         * Handles 'mousedown' events to begin the process of either creating, resizing, or selecting a box.
+         * If the 'addNewBox' flag is true, a new box is initialized at the cursor location, added to the list of boxes, and drawn.
+         * If a box is active, checks if user has clicked on its handles for potential resize operation.
+         * If no box handle is being dragged, checks which box the user clicked and marks it as active.
+         */
+        function mouseDown(event){
+            if(addNewBox){
+                eventX = event.pageX;
+                eventY = event.pageY-100;
+                newBox = new Rectangle(eventX, eventY, 10, 10);
+                activatedRect = newBox;
+                newBox.activated = true;
+                rectangles.push(newBox);
+                redrawAllRectangles();
+                addNewBox = false;
+            }
+            if(activatedRect){
+                handles.forEach((handle) => {
+                    x = handle[0]
+                    y = handle[1]
+                    canvas = document.getElementById('rectCanvas')
+                    var boundingRect = canvas.getBoundingClientRect();
+                    eventX = event.pageX;
+                    eventY = event.pageY-100;
+                    if(eventX >= x-10 && eventX <= x+10 && eventY >=y-10 && eventY <= y+10){
+                        console.log('dragging handle', handle[2])
+                        if(handle[2] == "tl"){dragTL = true};
+                        if(handle[2] == "tr"){dragTR = true};
+                        if(handle[2] == "bl"){dragBL = true};
+                        if(handle[2] == "br"){dragBR = true};
+                    }
+                })
+            }
+            if(dragTL == false && dragTR == false && dragBL == false && dragBR == false){
+                rectangles.forEach((rect) => {
+                rect.checkMouseClick(event.pageX, event.pageY-100);
+            })}
+        }
+        
+        /**
+         * Handles 'mouseup' events that terminate potential box resizing. 
+         * Sets all 'drag' variables (for each corner of a box) to false.
+         */
+        function mouseUp(event){
+            dragTL = dragTR = dragBL = dragBR = false;
+        }
+
+        /**
+         * Handles 'mousemove' events that facilitate resizing of an active box based on cursor movement.
+         * If a drag operation is in progress (a corner of the box is being dragged), this function recalculates
+         * the active box's dimensions based on the current mouse position. 
+         * The boxes on the canvas are redrawn if a resizing operation occurred.
+         */
+        function mouseMove(event){
+            mouseX = event.pageX;
+            mouseY = event.pageY-100;
+            redraw = false;
+
+            if(dragTL){
+                event.preventDefault();
+                event.stopPropagation();
+                activatedRect.width = activatedRect.x+activatedRect.width - mouseX;
+                activatedRect.height = activatedRect.y+activatedRect.height - mouseY;
+                activatedRect.x = mouseX;
+                activatedRect.y = mouseY;
+                redraw = true;
+            }
+            if(dragTR){
+                event.preventDefault();
+                event.stopPropagation();
+                activatedRect.width = mouseX-activatedRect.x;
+                activatedRect.height = activatedRect.y+activatedRect.height - mouseY;
+                activatedRect.y = mouseY;
+                redraw = true;
+            }
+            if(dragBL){
+                event.preventDefault();
+                event.stopPropagation();
+                activatedRect.width = activatedRect.x+activatedRect.width - mouseX;
+                activatedRect.height = mouseY-activatedRect.y;
+                activatedRect.x = mouseX;
+                redraw = true;
+            }
+            if(dragBR){
+                event.preventDefault();
+                event.stopPropagation();
+                activatedRect.width = mouseX-activatedRect.x
+                activatedRect.height = mouseY-activatedRect.y;
+                redraw = true;
+            }
+            if(redraw){
+                redrawAllRectangles();
+            }
+        }
+
+        /**
+         * Redraws all rectangles on the canvas. Initially clears the canvas, then iteratively draws each rectangle.
+         */
+        function redrawAllRectangles(){
+            console.log('redrawing')
+            canvas = document.getElementById('rectCanvas');
+            ctx = canvas.getContext('2d');
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            rectangles.forEach((rect) => {
+                rect.draw(ctx);
+            })
+        }
+        
+        /**
+         * Handles the process of image upload from a file input element. 
+         * Reads the selected file, sends it to the server to retrieve advertisement boxes, 
+         * and then initiates the display and drawing of the image and boxes respectively.
+         */
+        function uploadImage() {
+            var fileInput = document.getElementById('imageFileInput');
+            file = fileInput.files[0];
+            
+
+            if (file) {
+                var formData = new FormData();
+                formData.append('imageFile', file);
+
+                fetch("http://localhost:5000/getAdvertisementBoxes", {
+                    method: 'POST',
+                    body: formData
+                })
+                .then(response => response.json())
+                .then(data => {
+                    displayImage(file, data);
+                    //drawRectangles(data);
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                });
+            } else {
+                console.error('No file selected.');
+            }
+        }
+
+        /**
+         * Handles rendering of the uploaded image along with rectangles on the canvas. 
+         * The function sets up event listeners for interactions and draws the image and rectangles.
+         */
+        function displayImage(file, data) {
+            var reader = new FileReader();
+            reader.onload = function(event) {
+                image = new Image();
+                image.onload = function() {
+                    var canvas = document.getElementById('imageCanvas');
+                    canvas.width = image.width*factor;
+                    canvas.height = image.height*factor;
+                    var rectCanvas = document.getElementById('rectCanvas');
+                    rectCanvas.width = image.width*factor;
+                    rectCanvas.height = image.height*factor;
+
+                    // Add even-listeners (as seen by https://medium.com/variance-digital/interactive-rectangular-selection-on-a-responsive-image-761ebe24280c)
+                    rectCanvas.addEventListener('mousedown', mouseDown, false);
+                    rectCanvas.addEventListener('mouseup', mouseUp, false);
+                    rectCanvas.addEventListener('mousemove', mouseMove, false);
+                    var ctx = canvas.getContext('2d');
+                    ctx.drawImage(image, 0, 0, image.width*factor, image.height*factor);
+                    drawRectangles(data, image);
+                };
+                image.src = event.target.result;
+            };
+            reader.readAsDataURL(file);
+        }
+
+        /**
+         * Draws predefined rectangles on the canvas by creating Rectangle objects with provided coordinates.
+         */
+        function drawRectangles(objects, image) {
+            var canvas = document.getElementById('rectCanvas');
+            var ctx = canvas.getContext('2d');
+            objects.forEach(object => {
+                var coords = object.coords;
+                var x1 = coords[0]*factor;
+                var y1 = coords[1]*factor;
+                var x2 = coords[2]*factor;
+                var y2 = coords[3]*factor;
+                rect = new Rectangle(x1, y1, x2-x1, y2-y1)
+                rectangles.push(rect);
+                rect.draw(ctx);
+            });
+        }
+    </script>
+    <style>
+        #toolbar{
+            position: fixed;
+            top:0;
+            background:white;
+            padding:15px;
+            margin:15px;
+            display:flex;
+            box-shadow: 10px 20px 15px black;
+            border-radius: 20px;
+        }
+    </style>
+</body>
+</html>
