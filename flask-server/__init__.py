@@ -52,6 +52,11 @@ def create_app(test_config=None):
     cfg.MODEL.DEVICE = "cpu"
     predictor = DefaultPredictor(cfg)
 
+    # Setup folder
+    upload_folder = '/home/jakob/Johanna/Projekte/NewspaperNavigator/NewNaApp/NewNaApp/upload_folder/'
+    result_folder = '/home/jakob/Johanna/Projekte/NewspaperNavigator/NewNaApp/NewNaApp/result_folder/'
+    imagelist = os.listdir(upload_folder)
+
     """
     Converts the given image to binary format using a greyscale threshold.
 
@@ -93,6 +98,12 @@ def create_app(test_config=None):
         image_file = request.files['imageFile']
         nparr = np.frombuffer(image_file.read(), np.uint8)
         img = cv.imdecode(nparr, cv.IMREAD_COLOR)
+        return_object = box_detection(img)
+        response = jsonify(return_object)
+        response.headers.add('Access-Control-Allow-Origin', '*')
+        return response
+
+    def box_detection(img):
         outputs = predictor(img)
         return_object = []
         for i in range(len(outputs["instances"].pred_boxes)):
@@ -101,10 +112,7 @@ def create_app(test_config=None):
             box['confidence'] = outputs['instances'].scores[i].item()
             box['label'] = outputs['instances'].pred_classes[i].item()
             return_object.append(box)
-        print(return_object)
-        response = jsonify(return_object)
-        response.headers.add('Access-Control-Allow-Origin', '*')
-        return response
+        return return_object
     
     """
     Handles file uploading from POST requests, reads the image file, and saves it to local storage.
@@ -141,7 +149,6 @@ def create_app(test_config=None):
     @app.route('/segment', methods=['POST'])
     def segment():
         data = json.loads(request.data)
-        print(data)
         boxes = data['rectangles']
         img = cv.imread('image_upload/original.png')
         i = 0
@@ -186,6 +193,79 @@ def create_app(test_config=None):
                 file.write(json.dumps(page_meta))
             i += 1
         response = jsonify(200)
+        response.headers.add('Access-Control-Allow-Origin', '*')
+        return response
+    
+    @app.route('/segment/local', methods=['POST'])
+    def segment_local():
+        data = json.loads(request.data)
+        boxes = data['rectangles']
+        imname = data['source'].split('/')[-1]
+        filename = data['file_name']
+        try:
+            os.mkdir(f'{result_folder}{filename}')
+        except:
+            print("folder exists")
+        img = cv.imread(upload_folder+imname)
+        i = 0
+        page_meta = []
+        for box in boxes:
+            x = int(box['x'])
+            y = int(box['y'])
+            width = int(box['width'])
+            height = int(box['height'])
+            cutout = img[y*2:(y+height)*2, x*2:(x+width)*2]
+            cv.imwrite(f'{result_folder}{filename}/{i}.png', cutout)
+            jsonDict = {
+                "File": data["file_name"],
+                "Size": [width, height],
+                "Box": {
+                    "top_left": [x*2, y*2],
+                    "top_right": [(x+width)*2, y*2],
+                    "bottom_left": [x*2, (y+height)*2],
+                    "bottom_right": [(x+width)*2, (y+width)*2],
+                    "depth": 0,
+                    "height": height,
+                    "width": width,
+                    "size": [width, height],
+                    "contains_ad": True,
+                    "Percent_page": width*2*height*2/data["page_size"]*2
+                }
+            }
+            page_meta.append({
+                "top_left": [x*2, y*2],
+                "top_right": [(x+width)*2, y*2],
+                "bottom_left": [x*2, (y+height)*2],
+                "bottom_right": [(x+width)*2, (y+width)*2],
+                "depth": 0,
+                "height": height,
+                "width": width,
+                "size": [width, height],
+                "contains_ad": True
+            })
+            with open(f'{result_folder}{filename}/{i}.json', "w") as file:
+                file.write(json.dumps(jsonDict))
+            with open(f'{result_folder}{filename}/page_meta.json', "w") as file:
+                file.write(json.dumps(page_meta))
+            i += 1
+        response = jsonify(200)
+        response.headers.add('Access-Control-Allow-Origin', '*')
+        return response
+    
+    @app.route('/getNextImage')
+    def get_next_image():
+        i = request.args.get('i')
+        response = jsonify(imagelist[int(i)])
+        response.headers.add('Access-Control-Allow-Origin', '*')
+        return response
+    
+    @app.route('/getAdvertisementBoxes/localFile', methods=['POST'])
+    def get_advertisement_boxes_from_local_file():
+        data = json.loads(request.data)
+        imname = data['filepath'].split('/')[-1]
+        im = cv.imread(upload_folder+imname)
+        return_object = box_detection(im)
+        response = jsonify(return_object)
         response.headers.add('Access-Control-Allow-Origin', '*')
         return response
 
