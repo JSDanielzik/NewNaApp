@@ -37,22 +37,26 @@ def create_app(test_config=None):
     2. Model parameters like ROI head's test score threshold, test dataset, number of classes, model weights, and device are set in the configuration (cfg). 
     3. The Config object is then used to instantiate a DefaultPredictor for making predictions with the configured model.
     """
-    register_coco_instances("beyond_words_train", {}, "../newspaper-navigator-master/beyond_words_data/train_80_percent.json", "../newspaper-navigator-master/beyond_words_data/images")
-    register_coco_instances("beyond_words_val", {}, "../newspaper-navigator-master/beyond_words_data/val_20_percent.json", "../newspaper-navigator-master/beyond_words_data/images")
-    register_coco_instances("beyond_words_combined", {}, "../newspaper-navigator-master/beyond_words_data/trainval.json", "../newspaper-navigator-master/beyond_words_data/images")
+
+
+    #register_coco_instances("beyond_words_train", {}, "../newspaper-navigator-master/beyond_words_data/train_80_percent.json", "../newspaper-navigator-master/beyond_words_data/images")
+    #register_coco_instances("beyond_words_val", {}, "../newspaper-navigator-master/beyond_words_data/val_20_percent.json", "../newspaper-navigator-master/beyond_words_data/images")
+    #register_coco_instances("beyond_words_combined", {}, "../newspaper-navigator-master/beyond_words_data/trainval.json", "../newspaper-navigator-master/beyond_words_data/images")
 
     cfg = get_cfg()
 
     cfg.MODEL.ROI_HEADS.SCORE_THRESH_TEST = 0.75
     cfg.DATASETS.TEST = ("beyond_words_val", )
+    # CHANGE this to the corresponding location on your computer (your python installation/environment -> detectron2 -> model zoo)
     cfg.merge_from_file("/home/jakob/anaconda3/envs/JohannaProbiert/lib/python3.7/site-packages/detectron2/model_zoo/configs/COCO-Detection/faster_rcnn_R_50_FPN_3x.yaml")
     cfg.MODEL.ROI_HEADS.NUM_CLASSES = 7
-
+    # CHANGE this to the location where you saved the Newspaper Navigator model
     cfg.MODEL.WEIGHTS = '/home/jakob/Johanna/Projekte/NewspaperNavigator/NewNaApp/NewNaApp/model_final.pth'
     cfg.MODEL.DEVICE = "cpu"
     predictor = DefaultPredictor(cfg)
 
     # Setup folder
+    # CHANGE this to the location where you would like to save uploaded and segmented files in local file mode
     upload_folder = '/home/jakob/Johanna/Projekte/NewspaperNavigator/NewNaApp/NewNaApp/upload_folder/'
     result_folder = '/home/jakob/Johanna/Projekte/NewspaperNavigator/NewNaApp/NewNaApp/result_folder/'
     imagelist = os.listdir(upload_folder)
