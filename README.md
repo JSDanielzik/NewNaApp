@@ -58,3 +58,5 @@ Institut für Digital Humanities
 Georg-August-Universität Göttingen
 
 [johanna.stoeriko@uni-goettingen.de](mailto:johanna.stoeriko@uni-goettingen.de)
+
+-----
